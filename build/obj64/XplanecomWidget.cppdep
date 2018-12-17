@@ -1,0 +1,8 @@
+build/obj64/XplanecomWidget.o: XplanecomWidget.cpp \
+ SDK/CHeaders/XPLM/XPLMGraphics.h SDK/CHeaders/XPLM/XPLMDefs.h \
+ SDK/CHeaders/XPLM/XPLMDisplay.h SDK/CHeaders/XPLM/XPLMUtilities.h \
+ SDK/CHeaders/XPLM/XPLMProcessing.h SDK/CHeaders/XPLM/XPLMMenus.h \
+ SDK/CHeaders/XPLM/XPLMUtilities.h SDK/CHeaders/Widgets/XPWidgets.h \
+ SDK/CHeaders/Widgets/XPWidgetDefs.h SDK/CHeaders/XPLM/XPLMDefs.h \
+ SDK/CHeaders/Widgets/XPStandardWidgets.h \
+ SDK/CHeaders/XPLM/XPLMDataAccess.h
