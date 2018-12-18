@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <math.h>
 
 
 #if IBM
@@ -30,6 +31,11 @@
 #ifndef XPLM300
 	#error This is made to be compiled against the XPLM300 SDK
 #endif
+
+// variables needed for the simulator
+float dt = -1;//0.006;
+float pi = 3.14159265359;
+
 
 char InstructionsText[50][200] = {
 "  Network options",
@@ -56,10 +62,13 @@ XPLMDataRef FlightModelReactivate = NULL;
 XPLMDataRef xLocal = NULL;
 XPLMDataRef yLocal = NULL;
 XPLMDataRef zLocal = NULL;
-
+/*
 XPLMDataRef phiFromDataRef = NULL;
 XPLMDataRef thetaFromDataRef = NULL;
 XPLMDataRef psiFromDataRef = NULL;
+*/
+// orientation given in quaternions
+XPLMDataRef quaternionVector = {NULL};
 
 // initialize socket and structure
 int socketInfo;
@@ -69,7 +78,11 @@ int receivedArray;
 const char* Host;
 int socketPort;
 // socket function declaration
-int ReceiveDataFromSocket(const char* host, int socketport, int receivedArray);
+static float ReceiveDataFromSocket(
+                                   float                inElapsedSinceLastCall,
+                                   float                inElapsedTimeSinceLastFlightLoop,
+                                   int                  inCounter,
+                                   void *               inRefcon);
 
 /* socket message will be a total of 3 doubles and 3 float
 representing respectively latitude, longitude, elevation, phi, theta, psi */
@@ -97,6 +110,12 @@ double localX;
 double localY;
 double localZ;
 
+// for quaternion calculation
+float qVec[4];
+float phi1;
+float theta1;
+float psi1;
+
 // array to override internal fdm (20 values can be overridden, interested only in the first)
 int deactivateFlag[1];
 // array to reactivate internal fdm
@@ -108,9 +127,9 @@ int isFDMActive;
 static XPWidgetID FDMbuttonState[1] = {NULL};
 
 
-//socket function
-int ReceiveDataFromSocket(const char* host, int socketport, int receivedArray){
-  //create socket
+//socket functions
+int CreateSocket(const char* host, int socketport){
+	//create socket
   socketInfo = socket(AF_INET,SOCK_DGRAM,0);
   // assign values
   server.sin_addr.s_addr = inet_addr(Host);
@@ -122,14 +141,18 @@ int ReceiveDataFromSocket(const char* host, int socketport, int receivedArray){
     return 1;
   }
   std::cout << "Listening from IP address: "<< Host <<", port: "<< socketPort << '\n';
+}
 
+float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
+                                   float                inElapsedTimeSinceLastFlightLoop,
+                                   int                  inCounter,
+                                   void *               inRefcon){
 
-  //receivedArray = 1;
-  while (receivedArray>=0) {
   // receive incoming message
   receivedArray = recv(socketInfo,&positionAndAttitude_, sizeof(positionAndAttitude_), 0);
   if( receivedArray < 0) {
-    puts("Received failed");
+    std::cerr<< "ERROR ON RECEIVING"<<'\n';
+		std::cout << "bytes received= "<< receivedArray << '\n';
     return 1;
     }
 
@@ -141,12 +164,14 @@ int ReceiveDataFromSocket(const char* host, int socketport, int receivedArray){
   theta = positionAndAttitude_.thetaReceived;
   psi = positionAndAttitude_.psiReceived;
 
+
+	float elapsedTime = XPLMGetElapsedTime();
   // print what is received
   std::cout << "bytes received= "<< receivedArray << '\n';
-
+	std::cout << "elapsed time [sec] =" << elapsedTime << '\n';
   std::cout << "latitude [deg]= "<< latitude << '\n';
   std::cout << "longitude [deg]= "<< longitude << '\n';
-  std::cout << "elevation [deg]= "<< elevation << '\n';
+  std::cout << "elevation [m]= "<< elevation << '\n';
   std::cout << "phi [deg]= "<< phi << '\n';
   std::cout << "theta [deg]= "<< theta << '\n';
   std::cout << "psi [deg]= "<< psi << '\n';
@@ -154,18 +179,25 @@ int ReceiveDataFromSocket(const char* host, int socketport, int receivedArray){
 	//transform in local coordinated that can be written as datarefs
 	XPLMWorldToLocal(latitude,longitude,elevation,&localX,&localY,&localZ);
 
-	// set the 6 useful data
+	// transform the desired flight angles in quaternions
+	phi1   = pi/360.0*phi;
+	theta1 = pi/360.0*theta;
+	psi1   = pi/360.0*psi;
+	qVec[0] =  cos(psi1) * cos(theta1) * cos(phi1) + sin(psi1) * sin(theta1) * sin(phi1);
+	qVec[1] =  cos(psi1) * cos(theta1) * sin(phi1) - sin(psi1) * sin(theta1) * cos(phi1);
+	qVec[2] =  cos(psi1) * sin(theta1) * cos(phi1) + sin(psi1) * cos(theta1) * sin(phi1);
+	qVec[3] = -cos(psi1) * sin(theta1) * sin(phi1) + sin(psi1) * cos(theta1) * cos(phi1);
+
+
+	// set the useful data
 	XPLMSetDatad(xLocal,localX);
 	XPLMSetDatad(yLocal,localY);
 	XPLMSetDatad(zLocal,localZ);
-	XPLMSetDataf(phiFromDataRef,phi);
-	XPLMSetDataf(thetaFromDataRef,theta);
-	XPLMSetDataf(psiFromDataRef,psi);
+	XPLMSetDatavf(quaternionVector,qVec,0,4);
+	return dt;
 
-	}
-
-	//return 0;
 }
+
 
 PLUGIN_API int XPluginStart(
 							char *		outName,
@@ -178,6 +210,9 @@ PLUGIN_API int XPluginStart(
 	strcpy(outName, "Xplanecom");
 	strcpy(outSig, "AttilaFrameSim.UDPplugin.Xplanecom");
 	strcpy(outDesc, "A plugin that disables Xplane's FDM, by Matteo Daniele");
+
+	// register flightloop callback
+	XPLMRegisterFlightLoopCallback(ReceiveDataFromSocket,dt,NULL);
 
 	// create the menu
 	// sub menu element (item of MenuXPlaneCom)
@@ -198,11 +233,14 @@ PLUGIN_API int XPluginStart(
 	xLocal 	= XPLMFindDataRef("sim/flightmodel/position/local_x");
 	yLocal  = XPLMFindDataRef("sim/flightmodel/position/local_y");
 	zLocal  = XPLMFindDataRef("sim/flightmodel/position/local_z");
+
+	quaternionVector = XPLMFindDataRef("sim/flightmodel/position/q");
 	//TODO: better work with quaternions since euler angles are not reported so precisely
+	/*
 	phiFromDataRef 			= XPLMFindDataRef("sim/flightmodel/position/phi");
 	thetaFromDataRef 		= XPLMFindDataRef("sim/flightmodel/position/theta");
 	psiFromDataRef 			= XPLMFindDataRef("sim/flightmodel/position/psi");
-
+	*/
 	// flag tells us if the widget is displayed
 	gMenuItem = 0;
 	return 1;
@@ -221,6 +259,8 @@ PLUGIN_API void	XPluginStop(void)
 	reactivateFlag[0]=0;
 	XPLMSetDatavi(OverrideFDMDataRef,reactivateFlag,0,1);
 	close(socketInfo);
+	/* Unregister the callback */
+	XPLMUnregisterFlightLoopCallback(ReceiveDataFromSocket, NULL);
 
 }
 
@@ -329,12 +369,12 @@ int	InstructionsHandler(XPWidgetMessage  inMessage, XPWidgetID  inWidget, long  
 		// here comes the override of the internal fdm
 		XPLMSetDatavi(OverrideFDMDataRef,deactivateFlag,0,1);
 		// socket properties definition
-  	Host = "127.0.0.1";
-  	socketPort = 8888;
-
+		Host = "127.0.0.1";
+		socketPort = 8888;
+		CreateSocket(Host, socketPort);
 		// start receiving data from socket
-  	ReceiveDataFromSocket(Host,socketPort, receivedArray);
-		return 2;
+  	// ReceiveDataFromSocket(Host,socketPort, receivedArray);
+		return 0;
 	}
 
 	return 0;
