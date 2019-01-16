@@ -78,13 +78,14 @@ XPLMDataRef blade_pitch_main = NULL;
 XPLMDataRef blade_flap = NULL;
 XPLMDataRef blade_lag = NULL;
 XPLMDataRef blade_pitch_tail = NULL;
+XPLMDataRef rotors_shaft_angles = NULL;
 
 float customDataRefValue[5];
 
-float initialAnglesValue[5] = {0};
-
+float initialAnglesValue[5] = {10};
+/*
 int GetDesiredCustomDataRef(void* inRefcon,
-                           	float *              outValues,    /* Can be NULL */
+                           	float *              outValues,    // Can be NULL
                            	int                  inOffset,
                            	int                  inMax);
 
@@ -92,7 +93,7 @@ void SetDesiredCustomDataRef(void *               inRefcon,
                              float *              inValues,
                              int                  inOffset,
                              int                  inCount);
-
+*/
 /*
 float GetPitchAnglesMain(void* inRefcon);
 float SetPitchAnglesMain(void* inRefcon, float pitchValuesMain);
@@ -103,8 +104,6 @@ float SetLagAnglesMain(void* inRefcon, float LagValues);
 float GetPitchAnglesTail(void* inRefcon);
 float SetPitchAnglesTail(void* inRefcon, float pitchValuesTail);
 */
-// orientation given in quaternions
-// XPLMDataRef quaternionVector = {NULL};
 
 // initialize socket and structure
 int socketInfo;
@@ -144,6 +143,8 @@ float BLADE_5_pitch;
 float BLADE_5_flap;
 float BLADE_5_lag;
 float TAIL_PITCH;
+float MR_SHAFT_ANGLE;
+float TR_SHAFT_ANGLE;
 }
 // positionAndAttitude_ is a structure
 positionAndAttitude_;
@@ -158,29 +159,12 @@ float psi;
 float thetaMain[5];
 float betaMain[5];
 float epsMain[5];
-/*
-float theta2;
-float beta2;
-float eps2;
-float theta3;
-float beta3;
-float eps3;
-float theta4;
-float beta4;
-float eps4;
-float thet5;
-float beta5;
-float eps5;
-*/
 float thetaTail[5];
-
-
+float rotorsShaftAngles[2];
 
 double localX;
 double localY;
 double localZ;
-
-
 
 // array to override internal fdm (20 values can be overridden, interested only in the first)
 int deactivateFlag[1];
@@ -192,7 +176,7 @@ int reactivateFlag[1];
 // button state for the widget
 static XPWidgetID FDMbuttonState[1] = {NULL};
 
-
+/*
 // functions for custom datarefs
 int GetDesiredCustomDataRef(void *               inRefcon,
                             float *              inValues,
@@ -211,9 +195,7 @@ void SetDesiredCustomDataRef(void *               inRefcon,
 	customDataRefValue[i] = inValues[i];
 	}
 }
-
-
-
+*/
 
 //socket functions
 int CreateSocket(const char* host, int socketport){
@@ -273,25 +255,52 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	thetaTail[1] = positionAndAttitude_.TAIL_PITCH;
 	thetaTail[2] = positionAndAttitude_.TAIL_PITCH;
 	thetaTail[3] = positionAndAttitude_.TAIL_PITCH;
+	// main and tail rotor RPM
+	rotorsShaftAngles[0] = positionAndAttitude_.MR_SHAFT_ANGLE;
+	rotorsShaftAngles[1] = positionAndAttitude_.TR_SHAFT_ANGLE;
 
 
 	float elapsedTime = XPLMGetElapsedTime();
   // print what is received
   std::cout << "bytes received= "<< receivedArray << '\n';
 	std::cout << "elapsed time [sec] =" << elapsedTime << '\n';
-  std::cout << "latitude [deg]= "<< latitude << '\n';
+/*
+	std::cout << "latitude [deg]= "<< latitude << '\n';
   std::cout << "longitude [deg]= "<< longitude << '\n';
   std::cout << "elevation [m]= "<< elevation << '\n';
   std::cout << "phi [deg]= "<< phi << '\n';
   std::cout << "theta [deg]= "<< theta << '\n';
   std::cout << "psi [deg]= "<< psi << '\n';
+*/
+
 /*
 	std::cout << "theta[1] [deg]= "<< thetaMain[0] << '\n';
 	std::cout << "theta[2] [deg]= "<< thetaMain[1] << '\n';
 	std::cout << "theta[3] [deg]= "<< thetaMain[2] << '\n';
 	std::cout << "theta[4] [deg]= "<< thetaMain[3] << '\n';
 	std::cout << "theta[5] [deg]= "<< thetaMain[4] << '\n';
+
+	std::cout << "beta[1] [deg]= "<< betaMain[0] << '\n';
+	std::cout << "beta[2] [deg]= "<< betaMain[1] << '\n';
+	std::cout << "beta[3] [deg]= "<< betaMain[2] << '\n';
+	std::cout << "beta[4] [deg]= "<< betaMain[3] << '\n';
+	std::cout << "beta[5] [deg]= "<< betaMain[4] << '\n';
+
+	std::cout << "eps[1] [deg]= "<< epsMain[0] << '\n';
+	std::cout << "eps[2] [deg]= "<< epsMain[1] << '\n';
+	std::cout << "eps[3] [deg]= "<< epsMain[2] << '\n';
+	std::cout << "eps[4] [deg]= "<< epsMain[3] << '\n';
+	std::cout << "eps[5] [deg]= "<< epsMain[4] << '\n';
+
+	std::cout << "thetaTail[1] [deg]= "<< thetaTail[0] << '\n';
+	std::cout << "thetaTail[2] [deg]= "<< thetaTail[1] << '\n';
+	std::cout << "thetaTail[3] [deg]= "<< thetaTail[2] << '\n';
+	std::cout << "thetaTail[4] [deg]= "<< thetaTail[3] << '\n';
 */
+
+	std::cout << "MR_SHAFT_ANGLE [deg]= "<< rotorsShaftAngles[0] << '\n';
+	std::cout << "TR_SHAFT_ANGLE [deg]= "<< rotorsShaftAngles[1] << '\n';
+
 	//transform in local coordinated that can be written as datarefs
 	XPLMWorldToLocal(latitude,longitude,elevation,&localX,&localY,&localZ);
 
@@ -308,6 +317,8 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDatavf(blade_flap,betaMain,0,5);
 	XPLMSetDatavf(blade_lag,epsMain,0,5);
 	XPLMSetDatavf(blade_pitch_tail,thetaTail,0,5);
+	XPLMSetDatavf(rotors_shaft_angles,rotorsShaftAngles,0,2);
+
 
 	return dt;
 
@@ -352,6 +363,7 @@ PLUGIN_API int XPluginStart(
 	thetaDataRef  = XPLMFindDataRef("sim/flightmodel/position/theta");
 	psiDataRef  = XPLMFindDataRef("sim/flightmodel/position/psi");
 
+/*
 	// create custom dataref to set flap, lag, pitch, angles of the blades
 	blade_pitch_main = XPLMRegisterDataAccessor("rotors/main/pitch-deg",
 																					xplmType_FloatArray,                                // The types we support
@@ -394,17 +406,29 @@ PLUGIN_API int XPluginStart(
 																					GetDesiredCustomDataRef, SetDesiredCustomDataRef,	// Float array accessors
 																					NULL, NULL,
 																					NULL, NULL);
+*/
 
   // find and initialize the newly created customDataRefs
+/*
 	blade_pitch_main = XPLMFindDataRef("rotors/main/pitch-deg");
 	blade_flap = XPLMFindDataRef("rotors/main/flap-deg");
 	blade_lag = XPLMFindDataRef("rotors/main/lag-deg");
 	blade_pitch_tail = XPLMFindDataRef("rotors/tail/pitch-deg");
+*/
+
+	// array datarefs available and not used in our case
+	blade_pitch_main = XPLMFindDataRef("sim/flightmodel2/wing/elevator1_deg");
+	blade_flap = XPLMFindDataRef("sim/flightmodel2/wing/flap1_deg");
+	blade_lag = XPLMFindDataRef("sim/flightmodel2/wing/rudder1_deg");
+	blade_pitch_tail = XPLMFindDataRef("sim/flightmodel2/wing/elevator2_deg");
+	rotors_shaft_angles = XPLMFindDataRef("sim/flightmodel2/engines/prop_rotation_angle_deg");
 
 	XPLMSetDatavf(blade_pitch_main,initialAnglesValue,0,5);
 	XPLMSetDatavf(blade_flap,initialAnglesValue,0,5);
 	XPLMSetDatavf(blade_lag,initialAnglesValue,0,5);
 	XPLMSetDatavf(blade_pitch_tail,initialAnglesValue,0,4);
+	XPLMSetDatavf(rotors_shaft_angles,initialAnglesValue,0,2);
+
 
 	// register flightloop callback
 	XPLMRegisterFlightLoopCallback(ReceiveDataFromSocket,dt,NULL);
@@ -424,10 +448,12 @@ PLUGIN_API void	XPluginStop(void)
 	}
 
 	/* Unregister data accessors*/
+	/*
 	XPLMUnregisterDataAccessor(blade_pitch_main);
 	XPLMUnregisterDataAccessor(blade_flap);
 	XPLMUnregisterDataAccessor(blade_lag);
-	XPLMUnregisterDataAccessor(blade_pitch_tail);
+	XPLMUnregisterDataAccessor(blade_pitch_tail);*/
+
 	/* Unregister the callback */
 	XPLMUnregisterFlightLoopCallback(ReceiveDataFromSocket, NULL);
 
