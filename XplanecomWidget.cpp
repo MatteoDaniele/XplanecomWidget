@@ -72,6 +72,7 @@ XPLMDataRef aircraft_yLocalDataRef = NULL;
 XPLMDataRef aircraft_zLocalDataRef = NULL;
 XPLMDataRef aircraft_indicatedAltitudeDataRef = NULL;
 XPLMDataRef aircraft_verticalSpeedDataRef = NULL;
+XPLMDataRef aircraft_lateralAccelerationDataRef = NULL;
 XPLMDataRef aircraft_airspeedDataRef = NULL;
 
 XPLMDataRef phiDataRef = NULL;
@@ -116,6 +117,7 @@ double longitudeReceived;
 double elevationReceived;
 float airspeedReceived;
 float vertspeedReceived;
+float lateralaccReceived;
 float phiReceived;
 float thetaReceived;
 float psiReceived;
@@ -156,6 +158,7 @@ double aircraft_localY;
 double aircraft_localZ;
 float aircraft_airspeed;
 float aircraft_vertspeed;
+float aircraft_lateralacc;
 float aircraft_phi;
 float aircraft_theta;
 float aircraft_psi;
@@ -223,6 +226,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
   aircraft_elevation = positionAndAttitude_.elevationReceived;
 	aircraft_airspeed = positionAndAttitude_.airspeedReceived;
 	aircraft_vertspeed = positionAndAttitude_.vertspeedReceived;
+	aircraft_lateralacc = positionAndAttitude_.lateralaccReceived;
   aircraft_phi = positionAndAttitude_.phiReceived;
   aircraft_theta = positionAndAttitude_.thetaReceived;
   aircraft_psi = positionAndAttitude_.psiReceived;
@@ -314,6 +318,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDataf(aircraft_indicatedAltitudeDataRef,aircraft_elevation/mt2ft); // in ft
 	XPLMSetDataf(aircraft_airspeedDataRef,aircraft_airspeed);
 	XPLMSetDataf(aircraft_verticalSpeedDataRef,aircraft_vertspeed*60.0); // in ft/min
+	XPLMSetDataf(aircraft_lateralAccelerationDataRef,aircraft_lateralacc); // in m/s^2
 	XPLMSetDataf(phiDataRef,aircraft_phi);
 	XPLMSetDataf(thetaDataRef,aircraft_theta);
 	XPLMSetDataf(psiDataRef,aircraft_psi);
@@ -371,7 +376,7 @@ PLUGIN_API int XPluginStart(
 	aircraft_indicatedAltitudeDataRef = XPLMFindDataRef("sim/flightmodel/misc/h_ind");
 	aircraft_airspeedDataRef= XPLMFindDataRef("sim/flightmodel/position/indicated_airspeed");
 	aircraft_verticalSpeedDataRef = XPLMFindDataRef("sim/flightmodel/position/vh_ind_fpm");
-
+	aircraft_lateralAccelerationDataRef = XPLMFindDataRef("sim/flightmodel/position/local_ay");
 	// euler angles
 	phiDataRef 	= XPLMFindDataRef("sim/flightmodel/position/phi");
 	thetaDataRef  = XPLMFindDataRef("sim/flightmodel/position/theta");
