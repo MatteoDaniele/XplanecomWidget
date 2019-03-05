@@ -78,13 +78,21 @@ XPLMDataRef aircraft_airspeedDataRef = NULL;
 XPLMDataRef phiDataRef = NULL;
 XPLMDataRef thetaDataRef = NULL;
 XPLMDataRef psiDataRef = NULL;
-
+XPLMDataRef phiIndicatedDataref = NULL;
+XPLMDataRef thetaIndicatedDataref = NULL;
+XPLMDataRef psiIndicatedDataref = NULL;
 // dataref creation for main rotor angles
 XPLMDataRef blade_pitch_mainDataRef = NULL;
 XPLMDataRef blade_flapDataRef = NULL;
 XPLMDataRef blade_lagDataRef = NULL;
 XPLMDataRef blade_pitch_tailDataRef = NULL;
 XPLMDataRef rotors_shaft_anglesDataRef = NULL;
+
+// joystick datarefs
+XPLMDataRef joystick_cyclic_lateralDataRef = NULL;
+XPLMDataRef joystick_cyclic_longitudinalDataRef = NULL;
+XPLMDataRef joystick_pedalsDataRef = NULL;
+XPLMDataRef joystick_collectiveDataRef = NULL;
 
 // dataref creation for ship position
 XPLMDataRef ship_xDataRef = NULL;
@@ -112,6 +120,7 @@ static float ReceiveDataFromSocket(
 
 // structure definition
 struct{
+// helo
 double latitudeReceived;
 double longitudeReceived;
 double elevationReceived;
@@ -136,9 +145,13 @@ float BLADE_4_lag;
 float BLADE_5_pitch;
 float BLADE_5_flap;
 float BLADE_5_lag;
-float TAIL_PITCH;
+// joystick
+float JOYSTICK_CYCLIC_LATERAL;
+float JOYSTICK_CYCLIC_LONGITUDINAL;
+float JOYSTICK_PEDALS;
+float JOYSTICK_COLLECTIVE;
 float MR_SHAFT_ANGLE;
-float TR_SHAFT_ANGLE;
+// ship
 double SHIP_X;
 double SHIP_Y;
 double SHIP_Z;
@@ -174,6 +187,7 @@ float thetaMain[5];
 float betaMain[5];
 float epsMain[5];
 float thetaTail[5];
+float joystickNormalizedPositions[4];
 float rotorsShaftAngles[2];
 
 double shipX[3];
@@ -216,7 +230,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
   receivedArray = recv(socketInfo,&positionAndAttitude_, sizeof(positionAndAttitude_), 0);
   if( receivedArray < 0) {
     std::cerr<< "ERROR ON RECEIVING"<<'\n';
-		std::cout << "bytes received= "<< receivedArray << '\n';
+		std::cout << "bytes received= "<< receivedArray+1 << '\n';
     return 1;
     }
 
@@ -247,13 +261,17 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	betaMain[4] = positionAndAttitude_.BLADE_5_flap;
 	epsMain[4] = positionAndAttitude_.BLADE_5_lag;
 	// for now only the collective value of the tail is provided, unnecessary to be more specific
-	thetaTail[0] = positionAndAttitude_.TAIL_PITCH;
-	thetaTail[1] = positionAndAttitude_.TAIL_PITCH;
-	thetaTail[2] = positionAndAttitude_.TAIL_PITCH;
-	thetaTail[3] = positionAndAttitude_.TAIL_PITCH;
+	thetaTail[0] = positionAndAttitude_.JOYSTICK_PEDALS;
+	thetaTail[1] = positionAndAttitude_.JOYSTICK_PEDALS;
+	thetaTail[2] = positionAndAttitude_.JOYSTICK_PEDALS;
+	thetaTail[3] = positionAndAttitude_.JOYSTICK_PEDALS;
+	joystickNormalizedPositions[0] = positionAndAttitude_.JOYSTICK_CYCLIC_LATERAL;
+	joystickNormalizedPositions[1] = positionAndAttitude_.JOYSTICK_CYCLIC_LONGITUDINAL;
+	joystickNormalizedPositions[2] = positionAndAttitude_.JOYSTICK_PEDALS;
+	joystickNormalizedPositions[3] = positionAndAttitude_.JOYSTICK_COLLECTIVE;
 	// main and tail rotor RPM
 	rotorsShaftAngles[0] = positionAndAttitude_.MR_SHAFT_ANGLE;
-	rotorsShaftAngles[1] = positionAndAttitude_.TR_SHAFT_ANGLE;
+	rotorsShaftAngles[1] = positionAndAttitude_.MR_SHAFT_ANGLE;
 
 	shipX[0] = positionAndAttitude_.SHIP_X;
 	shipX[1] = positionAndAttitude_.SHIP_Y;
@@ -267,43 +285,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	//float elapsedTime = XPLMGetElapsedTime();
   // print what is received
   std::cout << "bytes received= "<< receivedArray << '\n';
-/*
-	std::cout << "elapsed time [sec] =" << elapsedTime << '\n';
 
-	std::cout << "aircraft_latitude [deg]= "<< aircraft_latitude << '\n';
-  std::cout << "aircraft_longitude [deg]= "<< aircraft_longitude << '\n';
-  std::cout << "elevation [m]= "<< elevation << '\n';
-  std::cout << "phi [deg]= "<< phi << '\n';
-  std::cout << "theta [deg]= "<< theta << '\n';
-  std::cout << "psi [deg]= "<< psi << '\n';
-
-	std::cout << "theta[1] [deg]= "<< thetaMain[0] << '\n';
-	std::cout << "theta[2] [deg]= "<< thetaMain[1] << '\n';
-	std::cout << "theta[3] [deg]= "<< thetaMain[2] << '\n';
-	std::cout << "theta[4] [deg]= "<< thetaMain[3] << '\n';
-	std::cout << "theta[5] [deg]= "<< thetaMain[4] << '\n';
-
-	std::cout << "beta[1] [deg]= "<< betaMain[0] << '\n';
-	std::cout << "beta[2] [deg]= "<< betaMain[1] << '\n';
-	std::cout << "beta[3] [deg]= "<< betaMain[2] << '\n';
-	std::cout << "beta[4] [deg]= "<< betaMain[3] << '\n';
-	std::cout << "beta[5] [deg]= "<< betaMain[4] << '\n';
-
-	std::cout << "eps[1] [deg]= "<< epsMain[0] << '\n';
-	std::cout << "eps[2] [deg]= "<< epsMain[1] << '\n';
-	std::cout << "eps[3] [deg]= "<< epsMain[2] << '\n';
-	std::cout << "eps[4] [deg]= "<< epsMain[3] << '\n';
-	std::cout << "eps[5] [deg]= "<< epsMain[4] << '\n';
-
-	std::cout << "thetaTail[1] [deg]= "<< thetaTail[0] << '\n';
-	std::cout << "thetaTail[2] [deg]= "<< thetaTail[1] << '\n';
-	std::cout << "thetaTail[3] [deg]= "<< thetaTail[2] << '\n';
-	std::cout << "thetaTail[4] [deg]= "<< thetaTail[3] << '\n';
-
-
-	std::cout << "MR_SHAFT_ANGLE [deg]= "<< rotorsShaftAngles[0] << '\n';
-	std::cout << "TR_SHAFT_ANGLE [deg]= "<< rotorsShaftAngles[1] << '\n';
-*/
 	//transform in local coordinates that can be written as datarefs
 	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,&aircraft_localX,&aircraft_localY,&aircraft_localZ);
 
@@ -322,20 +304,32 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDataf(phiDataRef,aircraft_phi);
 	XPLMSetDataf(thetaDataRef,aircraft_theta);
 	XPLMSetDataf(psiDataRef,aircraft_psi);
+	// for the artificial horizon
+	XPLMSetDataf(phiIndicatedDataref,aircraft_phi);
+	XPLMSetDataf(thetaIndicatedDataref,aircraft_theta);
+	XPLMSetDataf(psiIndicatedDataref,aircraft_psi);
+
 
 	XPLMSetDatavf(blade_pitch_mainDataRef,thetaMain,0,5);
 	XPLMSetDatavf(blade_flapDataRef,betaMain,0,5);
 	XPLMSetDatavf(blade_lagDataRef,epsMain,0,5);
 	XPLMSetDatavf(blade_pitch_tailDataRef,thetaTail,0,5);
+	XPLMSetDataf(joystick_cyclic_lateralDataRef,joystickNormalizedPositions[0]);
+	XPLMSetDataf(joystick_cyclic_longitudinalDataRef,joystickNormalizedPositions[1]);
+	XPLMSetDataf(joystick_pedalsDataRef,joystickNormalizedPositions[2]);
+	XPLMSetDataf(joystick_collectiveDataRef,0.5*(joystickNormalizedPositions[3]+1)); // from 0 to 1
+
+
 	XPLMSetDatavf(rotors_shaft_anglesDataRef,rotorsShaftAngles,0,2);
 /*
 	XPLMSetDatad(ship_xDataRef,shipX[0]);
 	XPLMSetDatad(ship_yDataRef,shipX[1]);
 	XPLMSetDatad(ship_zDataRef,shipX[2]);
+*/
 	XPLMSetDataf(ship_phiDataRef,shipPHI[0]);
 	XPLMSetDataf(ship_theDataRef,shipPHI[1]);
 	XPLMSetDataf(ship_psiDataRef,shipPHI[2]);
-*/
+
 	return dt;
 
 }
@@ -382,11 +376,21 @@ PLUGIN_API int XPluginStart(
 	thetaDataRef  = XPLMFindDataRef("sim/flightmodel/position/theta");
 	psiDataRef  = XPLMFindDataRef("sim/flightmodel/position/psi");
 
+	phiIndicatedDataref = XPLMFindDataRef("sim/cockpit/gyros/phi_ind_ahars_pilot_deg");
+	thetaIndicatedDataref = XPLMFindDataRef("sim/cockpit/gyros/the_ind_ahars_pilot_deg");
+	psiIndicatedDataref = XPLMFindDataRef("sim/cockpit/gyros/psi_ind_ahars_pilot_degm");
+
+
+
 	// array datarefs available and not used in our case
 	blade_pitch_mainDataRef = XPLMFindDataRef("sim/flightmodel2/wing/elevator1_deg");
 	blade_flapDataRef = XPLMFindDataRef("sim/flightmodel2/wing/flap1_deg");
 	blade_lagDataRef = XPLMFindDataRef("sim/flightmodel2/wing/rudder1_deg");
 	blade_pitch_tailDataRef = XPLMFindDataRef("sim/flightmodel2/wing/elevator2_deg");
+	joystick_cyclic_lateralDataRef = XPLMFindDataRef("sim/joystick/yoke_roll_ratio");
+	joystick_cyclic_longitudinalDataRef = XPLMFindDataRef("sim/joystick/yoke_pitch_ratio");
+	joystick_pedalsDataRef = XPLMFindDataRef("sim/joystick/yoke_heading_ratio");
+	joystick_collectiveDataRef = XPLMFindDataRef("sim/cockpit2/engine/actuators/throttle_ratio_all");
 	rotors_shaft_anglesDataRef = XPLMFindDataRef("sim/flightmodel2/engines/prop_rotation_angle_deg");
 
 	// ship datarefs
