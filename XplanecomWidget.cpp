@@ -408,6 +408,11 @@ PLUGIN_API int XPluginStart(
 	XPLMSetDatavf(rotors_shaft_anglesDataRef,initialAnglesValue,0,2);
 	XPLMSetDatai(AvionicsOn,1);
 
+	// initialize ship angles
+	XPLMSetDataf(ship_phiDataRef,0.0);
+	XPLMSetDataf(ship_theDataRef,0.0);
+	XPLMSetDataf(ship_psiDataRef,0.0);
+
 
 	// register flightloop callback
 	XPLMRegisterFlightLoopCallback(ReceiveDataFromSocket,dt,NULL);
@@ -428,6 +433,8 @@ PLUGIN_API void	XPluginStop(void)
 
 	/* Unregister the callback */
 	XPLMUnregisterFlightLoopCallback(ReceiveDataFromSocket, NULL);
+	/* close the socket */
+	close(socketInfo);
 
 }
 
