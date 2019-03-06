@@ -45,8 +45,8 @@ int socketPort = 9016;
 
 char InstructionsText[50][200] = {
 "  Network options",
-"  Host address: 127.0.0.1",
-"  Port: 9016",
+"  Host address:",
+"  Port:",
 "  FDM internal/external",
 ""
 };
@@ -165,7 +165,7 @@ float SHIP_PSI;
 // positionAndAttitude_ is a structure
 positionAndAttitude_;
 
-// values initialization
+// values initialization, VERBOSE BUT CLEAR TO UNDERSTAND
 double aircraft_latitude;
 double aircraft_longitude;
 double aircraft_elevation;
@@ -185,6 +185,9 @@ double ship_elevation;
 double ship_localX;
 double ship_localY;
 double ship_localZ;
+float ship_phi;
+float ship_theta;
+float ship_psi;
 
 float thetaMain[5];
 float betaMain[5];
@@ -193,17 +196,10 @@ float thetaTail[5];
 float joystickNormalizedPositions[4];
 float rotorsShaftAngles[2];
 
-double shipX[3];
-float shipPHI[3];
-
-
 // array to override internal fdm (20 values can be overridden, interested only in the first)
 int deactivateFlag[1];
 // array to reactivate internal fdm
 int reactivateFlag[1];
-// flag to check deactivation of fdm;
-//int isFDMActiveFlag[1];
-//int isFDMActive;
 // button state for the widget
 static XPWidgetID FDMbuttonState[1] = {NULL};
 
@@ -237,19 +233,19 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
     }
 
   // transform the message into something useful
-  aircraft_latitude = positionAndAttitude_.latitudeReceived;
-  aircraft_longitude = positionAndAttitude_.longitudeReceived;
-  aircraft_elevation = positionAndAttitude_.elevationReceived;
-	aircraft_airspeed = positionAndAttitude_.airspeedReceived;
-	aircraft_vertspeed = positionAndAttitude_.vertspeedReceived;
+  aircraft_latitude 	= positionAndAttitude_.latitudeReceived;
+  aircraft_longitude 	= positionAndAttitude_.longitudeReceived;
+  aircraft_elevation 	= positionAndAttitude_.elevationReceived;
+	aircraft_airspeed 	= positionAndAttitude_.airspeedReceived;
+	aircraft_vertspeed  = positionAndAttitude_.vertspeedReceived;
 	aircraft_lateralacc = positionAndAttitude_.lateralaccReceived;
-  aircraft_phi = positionAndAttitude_.phiReceived;
-  aircraft_theta = positionAndAttitude_.thetaReceived;
-  aircraft_psi = positionAndAttitude_.psiReceived;
+  aircraft_phi 	 			= positionAndAttitude_.phiReceived;
+  aircraft_theta 			= positionAndAttitude_.thetaReceived;
+  aircraft_psi 	 			= positionAndAttitude_.psiReceived;
 
 	thetaMain[0] = positionAndAttitude_.BLADE_1_pitch;
-	betaMain[0] = positionAndAttitude_.BLADE_1_flap;
-	epsMain[0] = positionAndAttitude_.BLADE_1_lag;
+	betaMain[0]  = positionAndAttitude_.BLADE_1_flap;
+	epsMain[0] 	= positionAndAttitude_.BLADE_1_lag;
 	thetaMain[1] = positionAndAttitude_.BLADE_2_pitch;
 	betaMain[1] = positionAndAttitude_.BLADE_2_flap;
 	epsMain[1] = positionAndAttitude_.BLADE_2_lag;
@@ -275,24 +271,24 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	rotorsShaftAngles[0] = positionAndAttitude_.MR_SHAFT_ANGLE;
 	rotorsShaftAngles[1] = positionAndAttitude_.MR_SHAFT_ANGLE;
 
-	shipX[0] = positionAndAttitude_.SHIP_X;
-	shipX[1] = positionAndAttitude_.SHIP_Y;
-	shipX[2] = positionAndAttitude_.SHIP_Z;
+	ship_localX = positionAndAttitude_.SHIP_X;
+	ship_localY = positionAndAttitude_.SHIP_Y;
+	ship_localZ = positionAndAttitude_.SHIP_Z;
 
-	shipPHI[0] = positionAndAttitude_.SHIP_PHI;
-	shipPHI[1] = positionAndAttitude_.SHIP_THE;
-	shipPHI[2] = positionAndAttitude_.SHIP_PSI;
+	ship_phi 	 = positionAndAttitude_.SHIP_PHI*rad2deg;
+	ship_theta = positionAndAttitude_.SHIP_THE*rad2deg;
+	ship_psi 	 = positionAndAttitude_.SHIP_PSI*rad2deg;
 
   // print what is received
 	std::cout << "number of cycles=" << XPLMGetCycleNumber() << '\t';
   std::cout << "bytes received= " << receivedArray << '\n';
-
 	//transform in local coordinates that can be written as datarefs
-	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,&aircraft_localX,&aircraft_localY,&aircraft_localZ);
+	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,
+									 &aircraft_localX,&aircraft_localY,&aircraft_localZ);
 
-	// transform in local coordinates ship position
-	XPLMWorldToLocal(ship_latitude,ship_longitude,ship_elevation,&ship_localX,&ship_localY,&ship_localZ);
-
+	// transform in latitude longitude elevation coordinates ship position
+	XPLMLocalToWorld(ship_localX,ship_localY,ship_localZ,
+									 &ship_latitude,&ship_longitude,&ship_elevation);
 
 	// set the useful data
 	XPLMSetDatad(aircraft_xLocalDataRef,aircraft_localX);
@@ -322,14 +318,20 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 
 
 	XPLMSetDatavf(rotors_shaft_anglesDataRef,rotorsShaftAngles,0,2);
-/*
-	XPLMSetDatad(ship_xDataRef,shipX[0]);
-	XPLMSetDatad(ship_yDataRef,shipX[1]);
-	XPLMSetDatad(ship_zDataRef,shipX[2]);
-*/
-	XPLMSetDataf(ship_phiDataRef,shipPHI[0]);
-	XPLMSetDataf(ship_theDataRef,shipPHI[1]);
-	XPLMSetDataf(ship_psiDataRef,shipPHI[2]);
+
+	XPLMSetDatad(ship_xDataRef,ship_localX);
+	XPLMSetDatad(ship_yDataRef,ship_localY);
+	XPLMSetDatad(ship_zDataRef,ship_localZ);
+
+	XPLMSetDataf(ship_phiDataRef,ship_phi);
+	XPLMSetDataf(ship_theDataRef,ship_theta);
+	XPLMSetDataf(ship_psiDataRef,ship_psi);
+	std::cout << "ship phi= "  << ship_phi << '\t';
+	std::cout << "ship theta= " << ship_theta << '\t';
+	std::cout << "ship psi= " << ship_psi << '\n';
+	std::cout << "ship latitude= "  << ship_latitude << '\t';
+	std::cout << "ship longitude= " << ship_longitude << '\t';
+	std::cout << "ship elevation= " << ship_elevation << '\n';
 
 	return dt;
 
@@ -399,7 +401,7 @@ PLUGIN_API int XPluginStart(
 	ship_yDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_y");
 	ship_zDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_z");
 	ship_phiDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_phi");
-	ship_theDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_theta");
+	ship_theDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_the");
 	ship_psiDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_psi");
 
 	XPLMSetDatavf(blade_pitch_mainDataRef,initialAnglesValue,0,5);
@@ -421,14 +423,14 @@ PLUGIN_API int XPluginStart(
 																																	 NULL};
 	MBDynFrameSimFlightLoop = XPLMCreateFlightLoop(&MBDynFrameSimFlightLoop_structure_ptr);
 	XPLMScheduleFlightLoop(MBDynFrameSimFlightLoop,-1,1);
-/*
+	/*
 	XPLMScheduleFlightLoop schedules a flight loop callback for future execution.
 	If inInterval is negative, it is run in a certain number of frames based on the absolute
 	value of the input. If the interval is positive, it is a duration in seconds.
-	 If inRelativeToNow is true, ties are interpretted relative to the time this routine
-	 is called; otherwise they are relative to the last call time or the time
-	 the flight loop was registered (if never called).
-*/
+ 	If inRelativeToNow is true, ties are interpretted relative to the time this routine
+ 	is called; otherwise they are relative to the last call time or the time
+ 	the flight loop was registered (if never called).
+	*/
 	XPLMSetFlightLoopCallbackInterval(ReceiveDataFromSocket,dt,1,NULL);
 	/*
 		XPLMSetFlightLoopCallbackInterval sets when a callback will be called.
