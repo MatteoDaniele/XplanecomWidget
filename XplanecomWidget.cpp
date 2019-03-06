@@ -33,11 +33,12 @@
 #endif
 
 // variables needed for the simulator
-float dt = -1;//0.006;
+float dt = -1;//time interval: negative to cycles
 float pi = 3.14159265359;
 float deg2rad = pi/180;
 float rad2deg = 1/deg2rad;
 float mt2ft = 0.3048;
+
 // socket properties definition
 const char* Host = "127.0.0.1";
 int socketPort = 9016;
@@ -53,7 +54,7 @@ char InstructionsText[50][200] = {
 // initialize widget
 XPWidgetID	ExternalFDMWidget = NULL;
 XPWidgetID	InstructionsWindow = NULL;
-XPWidgetID	InstructionsTextWidget[50] = {NULL};
+XPWidgetID	FDMDeactivatorTextWidget[50] = {NULL};
 
 void InstructionsMenuHandler(void *, void *);
 void CreateWidget(int x1, int y1, int w, int h);
@@ -102,21 +103,23 @@ XPLMDataRef ship_phiDataRef = NULL;
 XPLMDataRef ship_theDataRef = NULL;
 XPLMDataRef ship_psiDataRef = NULL;
 
-float customDataRefValue[5];
+// create a customized flightloop callback
+XPLMFlightLoopID MBDynFrameSimFlightLoop;
+int strutSize = 4;
+
 
 float initialAnglesValue[5] = {10};
-
 // initialize socket and structure
 int socketInfo;
 struct sockaddr_in server;
 int receivedArray=1;
 
-// socket function declaration
+// socket function declaration that is repeated during the flight loop
 static float ReceiveDataFromSocket(
-                                   float                inElapsedSinceLastCall,
-                                   float                inElapsedTimeSinceLastFlightLoop,
-                                   int                  inCounter,
-                                   void *               inRefcon);
+                                 				float                inElapsedSinceLastCall,
+                                   			float                inElapsedTimeSinceLastFlightLoop,
+                                   			int                  inCounter,
+                                   			void *               inRefcon);
 
 // structure definition
 struct{
@@ -229,8 +232,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
   // receive incoming message
   receivedArray = recv(socketInfo,&positionAndAttitude_, sizeof(positionAndAttitude_), 0);
   if( receivedArray < 0) {
-    std::cerr<< "ERROR ON RECEIVING"<<'\n';
-		std::cout << "bytes received= "<< receivedArray+1 << '\n';
+		std::cout << "ERROR ON RECEIVING: bytes received= "<< receivedArray+1 << '\n';
     return 1;
     }
 
@@ -281,10 +283,9 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	shipPHI[1] = positionAndAttitude_.SHIP_THE;
 	shipPHI[2] = positionAndAttitude_.SHIP_PSI;
 
-
-	//float elapsedTime = XPLMGetElapsedTime();
   // print what is received
-  std::cout << "bytes received= "<< receivedArray << '\n';
+	std::cout << "number of cycles=" << XPLMGetCycleNumber() << '\t';
+  std::cout << "bytes received= " << receivedArray << '\n';
 
 	//transform in local coordinates that can be written as datarefs
 	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,&aircraft_localX,&aircraft_localY,&aircraft_localZ);
@@ -344,8 +345,8 @@ PLUGIN_API int XPluginStart(
 	XPLMMenuID  MenuXPlaneCom;
 	int 				MenuItemXPlaneCom;
 	strcpy(outName, "Xplanecom");
-	strcpy(outSig, "AttilaFrameSim.UDPplugin.Xplanecom");
-	strcpy(outDesc, "A plugin that disables Xplane's FDM in order to work as visualizer for AttilaFrameSim, by Matteo Daniele");
+	strcpy(outSig, 	"MBDynFrameSim.UDPplugin.Xplanecom");
+	strcpy(outDesc, "A plugin that disables Xplane's FDM in order to work as visualizer for MBDynFrameSim");
 
 	// create the menu
 	// sub menu element (item of MenuXPlaneCom)
@@ -413,6 +414,33 @@ PLUGIN_API int XPluginStart(
 	XPLMSetDataf(ship_theDataRef,0.0);
 	XPLMSetDataf(ship_psiDataRef,0.0);
 
+	// create the customized flightloop
+	XPLMCreateFlightLoop_t	MBDynFrameSimFlightLoop_structure_ptr = {sizeof(XPLMCreateFlightLoop_t),
+																																	 xplm_FlightLoop_Phase_AfterFlightModel,
+																																	 ReceiveDataFromSocket,
+																																	 NULL};
+	MBDynFrameSimFlightLoop = XPLMCreateFlightLoop(&MBDynFrameSimFlightLoop_structure_ptr);
+	XPLMScheduleFlightLoop(MBDynFrameSimFlightLoop,-1,1);
+/*
+	XPLMScheduleFlightLoop schedules a flight loop callback for future execution.
+	If inInterval is negative, it is run in a certain number of frames based on the absolute
+	value of the input. If the interval is positive, it is a duration in seconds.
+	 If inRelativeToNow is true, ties are interpretted relative to the time this routine
+	 is called; otherwise they are relative to the last call time or the time
+	 the flight loop was registered (if never called).
+*/
+	XPLMSetFlightLoopCallbackInterval(ReceiveDataFromSocket,dt,1,NULL);
+	/*
+		XPLMSetFlightLoopCallbackInterval sets when a callback will be called.
+		Do NOT call it from your callback;
+	  use the return value of the callback to change your callback interval from inside
+		your callback.
+		inInterval is formatted the same way as in XPLMRegisterFlightLoopCallback;
+		positive for seconds, negative for cycles, and 0 for deactivating the callback.
+		If inRelativeToNow is 1, times are from the time of this call;
+		otherwise they are from the time the callback was last called
+		(or the time it was registered if it has never been called.
+	*/
 
 	// register flightloop callback
 	XPLMRegisterFlightLoopCallback(ReceiveDataFromSocket,dt,NULL);
@@ -429,12 +457,18 @@ PLUGIN_API void	XPluginStop(void)
 	{
 		// destroy when closing
 		XPDestroyWidget(ExternalFDMWidget,1);
+		// destroy customized flight loop callback
+		XPLMDestroyFlightLoop(MBDynFrameSimFlightLoop);
+
+		std::cout << "ma fin qui arriva?"<< '\n';
 	}
 
 	/* Unregister the callback */
 	XPLMUnregisterFlightLoopCallback(ReceiveDataFromSocket, NULL);
 	/* close the socket */
+	std::cout << "Closing the socket..."<< '\n';
 	close(socketInfo);
+	std::cout << "... socket closed!"<< '\n';
 
 }
 
@@ -449,7 +483,7 @@ void InstructionsMenuHandler(void * inMenuRef, void * inItemRef)
 
 		case 1:	if (gMenuItem == 0)
 				{
-					CreateWidget(50, 256, 256, 128);	//left, top, right, bottom.
+					CreateWidget(96, 256, 256, 128);	//left, top, right, bottom.
 					gMenuItem = 1;
 				}
 				else
@@ -471,10 +505,11 @@ int y2 = y - h;
 // Create the Main Widget window.
 	ExternalFDMWidget = XPCreateWidget(x, y, x2, y2,
 					1,										// Visible
-					"External FDM Widget for AttilaFrameSim",	// desc
+					"MBDynFrameSim external FDM activator",	// desc
 					1,										// root
 					NULL,									// no container
 					xpWidgetClass_MainWindow);
+					XPSetWidgetProperty(ExternalFDMWidget, xpProperty_MainWindowType, xpMainWindowStyle_Translucent);
 					// Add Close Box to the Main Widget.  Other options are available.  See the SDK Documentation.
 					XPSetWidgetProperty(ExternalFDMWidget, xpProperty_MainWindowHasCloseBoxes, 1);
 
@@ -482,10 +517,11 @@ int y2 = y - h;
 					// Print each line of instructions.
 						for (Index=0; Index < 50; Index++)
 						{
+						// possible to add more lines in the future
 						if(strcmp(InstructionsText[Index],"") == 0) {break;}
 
 							// Create a text widget
-							InstructionsTextWidget[Index] = XPCreateWidget(x+10, y-(30+(Index*20)) , x2-20, y-(42+(Index*20)),
+							FDMDeactivatorTextWidget[Index] = XPCreateWidget(x+10, y-(30+(Index*20)) , x2-20, y-(42+(Index*20)),
 							1,	// Visible
 							InstructionsText[Index],// desc
 							0,		// root
@@ -495,7 +531,7 @@ int y2 = y - h;
 							if(strcmp(InstructionsText[Index],"  FDM internal/external")==0)
 							{
 								// create button for activation or deactivation of FDM
-								FDMbuttonState[0] = XPCreateWidget(x+50, y-(30+(Index*20)) , x2-10, y-(42+(Index*20)),
+								FDMbuttonState[0] = XPCreateWidget(x+60, y-(30+(Index*20)) , x2-10, y-(42+(Index*20)),
 								1,
 								"",
 								0,
@@ -538,21 +574,31 @@ int	InstructionsHandler(XPWidgetMessage  inMessage, XPWidgetID  inWidget, long  
 	// handle any checkbox selection
 	if (inMessage == xpMsg_ButtonStateChanged)
 	{
-
 		if(XPGetWidgetProperty(FDMbuttonState[0],xpProperty_ButtonState,NULL)==1){
-
+		// create the socket to receive from MBDYN
+		std::cout << "Socket creation..."<< '\n';
 		CreateSocket(Host, socketPort);
-		// start receiving data from socket
-		// here comes the override of the internal fdm
+		std::cout << "... socket created!"<< '\n';
+		// Override of the internal fdm
+		std::cout << "FDM is now external"<< '\n';
 		XPLMSetDatavi(OverrideFDMDataRef,deactivateFlag,0,1);
-		// here comes joystick override
+		// Joystick override
+		std::cout << "Joystick is now external"<< '\n';
 		XPLMSetDatai(OverrideJoystickDataRef,1);
-
-
-  	return 0;
 		}
+		else{
+			// close the socket receiving from MBDYN
+			std::cout << "Closing the socket..."<< '\n';
+			close(socketInfo);
+			std::cout << "... socket closed!"<< '\n';
+			// stop Override of the internal fdm
+			std::cout << "FDM is back to internal"<< '\n';
+			XPLMSetDatavi(OverrideFDMDataRef,deactivateFlag,0,0);
+			// stop Joystick override
+			std::cout << "Joystick is back to internal"<< '\n';
+			XPLMSetDatai(OverrideJoystickDataRef,0);
+		}
+		return 0;
 	}
-
 	return 0;
-
 }
