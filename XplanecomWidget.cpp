@@ -95,6 +95,13 @@ XPLMDataRef joystick_cyclic_longitudinalDataRef = NULL;
 XPLMDataRef joystick_pedalsDataRef = NULL;
 XPLMDataRef joystick_collectiveDataRef = NULL;
 
+// joystick datarefs
+XPLMDataRef joystick_trim_cyclic_lateralDataRef = NULL;
+XPLMDataRef joystick_trim_cyclic_longitudinalDataRef = NULL;
+XPLMDataRef joystick_trim_pedalsDataRef = NULL;
+XPLMDataRef joystick_trim_collectiveDataRef = NULL;
+
+
 // dataref creation for ship position
 XPLMDataRef ship_xDataRef = NULL;
 XPLMDataRef ship_yDataRef = NULL;
@@ -153,6 +160,12 @@ float JOYSTICK_CYCLIC_LATERAL;
 float JOYSTICK_CYCLIC_LONGITUDINAL;
 float JOYSTICK_PEDALS;
 float JOYSTICK_COLLECTIVE;
+
+float JOYSTICK_TRIM_CYCLIC_LATERAL;
+float JOYSTICK_TRIM_CYCLIC_LONGITUDINAL;
+float JOYSTICK_TRIM_PEDALS;
+float JOYSTICK_TRIM_COLLECTIVE;
+
 float MR_SHAFT_ANGLE;
 // ship
 double SHIP_X;
@@ -194,6 +207,7 @@ float betaMain[5];
 float epsMain[5];
 float thetaTail[5];
 float joystickNormalizedPositions[4];
+float joystickTrimNormalizedPositions[4];
 float rotorsShaftAngles[2];
 
 // array to override internal fdm (20 values can be overridden, interested only in the first)
@@ -267,6 +281,12 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	joystickNormalizedPositions[1] = positionAndAttitude_.JOYSTICK_CYCLIC_LONGITUDINAL;
 	joystickNormalizedPositions[2] = positionAndAttitude_.JOYSTICK_PEDALS;
 	joystickNormalizedPositions[3] = positionAndAttitude_.JOYSTICK_COLLECTIVE;
+
+	joystickTrimNormalizedPositions[0] = positionAndAttitude_.JOYSTICK_TRIM_CYCLIC_LATERAL;
+	joystickTrimNormalizedPositions[1] = positionAndAttitude_.JOYSTICK_TRIM_CYCLIC_LONGITUDINAL;
+	joystickTrimNormalizedPositions[2] = positionAndAttitude_.JOYSTICK_TRIM_PEDALS;
+	joystickTrimNormalizedPositions[3] = positionAndAttitude_.JOYSTICK_TRIM_COLLECTIVE;
+
 	// main and tail rotor RPM
 	rotorsShaftAngles[0] = positionAndAttitude_.MR_SHAFT_ANGLE;
 	rotorsShaftAngles[1] = positionAndAttitude_.MR_SHAFT_ANGLE;
@@ -280,7 +300,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	ship_psi 	 = positionAndAttitude_.SHIP_PSI*rad2deg;
 
   // print what is received
-	std::cout << "number of cycles=" << XPLMGetCycleNumber() << '\t';
+	//std::cout << "number of cycles=" << XPLMGetCycleNumber() << '\t';
   std::cout << "bytes received= " << receivedArray << '\n';
 	//transform in local coordinates that can be written as datarefs
 	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,
@@ -316,6 +336,11 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDataf(joystick_pedalsDataRef,joystickNormalizedPositions[2]);
 	XPLMSetDataf(joystick_collectiveDataRef,0.5*(joystickNormalizedPositions[3]+1)); // from 0 to 1
 
+	XPLMSetDataf(joystick_trim_cyclic_lateralDataRef,joystickTrimNormalizedPositions[0]);
+	XPLMSetDataf(joystick_trim_cyclic_longitudinalDataRef,joystickTrimNormalizedPositions[1]);
+	XPLMSetDataf(joystick_trim_pedalsDataRef,joystickTrimNormalizedPositions[2]);
+	XPLMSetDataf(joystick_trim_collectiveDataRef,joystickTrimNormalizedPositions[3]);
+
 
 	XPLMSetDatavf(rotors_shaft_anglesDataRef,rotorsShaftAngles,0,2);
 
@@ -326,13 +351,14 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDataf(ship_phiDataRef,ship_phi);
 	XPLMSetDataf(ship_theDataRef,ship_theta);
 	XPLMSetDataf(ship_psiDataRef,ship_psi);
+	/*
 	std::cout << "ship phi= "  << ship_phi << '\t';
 	std::cout << "ship theta= " << ship_theta << '\t';
 	std::cout << "ship psi= " << ship_psi << '\n';
 	std::cout << "ship latitude= "  << ship_latitude << '\t';
 	std::cout << "ship longitude= " << ship_longitude << '\t';
 	std::cout << "ship elevation= " << ship_elevation << '\n';
-
+	*/
 	return dt;
 
 }
@@ -390,10 +416,18 @@ PLUGIN_API int XPluginStart(
 	blade_flapDataRef = XPLMFindDataRef("sim/flightmodel2/wing/flap1_deg");
 	blade_lagDataRef = XPLMFindDataRef("sim/flightmodel2/wing/rudder1_deg");
 	blade_pitch_tailDataRef = XPLMFindDataRef("sim/flightmodel2/wing/elevator2_deg");
+
 	joystick_cyclic_lateralDataRef = XPLMFindDataRef("sim/joystick/yoke_roll_ratio");
 	joystick_cyclic_longitudinalDataRef = XPLMFindDataRef("sim/joystick/yoke_pitch_ratio");
 	joystick_pedalsDataRef = XPLMFindDataRef("sim/joystick/yoke_heading_ratio");
 	joystick_collectiveDataRef = XPLMFindDataRef("sim/cockpit2/engine/actuators/throttle_ratio_all");
+
+	joystick_trim_cyclic_lateralDataRef = XPLMFindDataRef("sim/cockpit2/controls/aileron_trim");
+	joystick_trim_cyclic_longitudinalDataRef = XPLMFindDataRef("sim/cockpit2/controls/elevator_trim");
+	joystick_trim_pedalsDataRef = XPLMFindDataRef("sim/cockpit2/controls/rudder_trim");
+	joystick_trim_collectiveDataRef = XPLMFindDataRef("sim/cockpit2/controls/rotor_trim");
+
+
 	rotors_shaft_anglesDataRef = XPLMFindDataRef("sim/flightmodel2/engines/prop_rotation_angle_deg");
 
 	// ship datarefs
