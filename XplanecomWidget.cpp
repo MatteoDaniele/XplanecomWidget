@@ -2,6 +2,8 @@
 #include <XPLMDisplay.h>
 
 #include "XPLMUtilities.h"
+#include "XPLMScenery.h"
+#include "XPLMInstance.h"
 #include "XPLMProcessing.h"
 #include "XPLMMenus.h"
 #include "XPWidgets.h"
@@ -110,9 +112,31 @@ XPLMDataRef ship_phiDataRef = NULL;
 XPLMDataRef ship_theDataRef = NULL;
 XPLMDataRef ship_psiDataRef = NULL;
 
+// create ship object loader
+const char* F590FolderLocation = "Resources/plugins/XplanecomWidget/F590.obj";
+XPLMObjectRef F590ObjectRef;
+XPLMObjectLoaded_f F590ObjectLoaded(
+																		XPLMObjectRef inObject,
+																		void* inRefcon);
+XPLMDrawInfo_t F590LocationAndAttitude;
+XPLMInstanceRef F590InstanceRef;
+
+const char* F590InstancedDataRefs[6][50]={
+			"sim/multiplayer/position/plane1_x",
+			"sim/multiplayer/position/plane1_y",
+			"sim/multiplayer/position/plane1_z",
+			"sim/multiplayer/position/plane1_phi",
+			"sim/multiplayer/position/plane1_the",
+			"sim/multiplayer/position/plane1_psi"};
+
+
+void 	F590LoadObjectAsync(
+													const char* inPath,
+													XPLMObjectLoaded_f inCallback,
+													void* inRefcon);
+
 // create a customized flightloop callback
 XPLMFlightLoopID MBDynFrameSimFlightLoop;
-int strutSize = 4;
 
 
 float initialAnglesValue[5] = {10};
@@ -160,17 +184,19 @@ float JOYSTICK_CYCLIC_LATERAL;
 float JOYSTICK_CYCLIC_LONGITUDINAL;
 float JOYSTICK_PEDALS;
 float JOYSTICK_COLLECTIVE;
-
 float JOYSTICK_TRIM_CYCLIC_LATERAL;
 float JOYSTICK_TRIM_CYCLIC_LONGITUDINAL;
 float JOYSTICK_TRIM_PEDALS;
 float JOYSTICK_TRIM_COLLECTIVE;
-
 float MR_SHAFT_ANGLE;
 // ship
+
 double SHIP_X;
 double SHIP_Y;
 double SHIP_Z;
+//float SHIP_X;
+//float SHIP_Y;
+//float SHIP_Z;
 float SHIP_PHI;
 float SHIP_THE;
 float SHIP_PSI;
@@ -217,6 +243,14 @@ int reactivateFlag[1];
 // button state for the widget
 static XPWidgetID FDMbuttonState[1] = {NULL};
 
+
+// load ship asynchronously
+//void F590LoadObjectAsync(const char* inPath, XPLMObjectLoaded_f inCallback, void* inRefcon){
+
+
+
+
+
 //socket functions
 int CreateSocket(const char* host, int socketport){
 	//create socket
@@ -227,13 +261,14 @@ int CreateSocket(const char* host, int socketport){
   server.sin_port = htons(socketPort);
   // bind to socket
   if(bind(socketInfo,(struct sockaddr *) &server,sizeof(server))<0){
-    std::cerr<< "ERROR ON BINDING"<<'\n';
+    std::cerr<< "ERROR ON BINDING" <<'\n';
     return 1;
   }
   std::cout << "Listening from IP address: "<< Host <<", port: "<< socketPort <<" ..." << '\n';
-	return 0;
+		return 0;
 }
 
+//socket data reception
 float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
                                    float                inElapsedTimeSinceLastFlightLoop,
                                    int                  inCounter,
@@ -301,14 +336,11 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 
   // print what is received
 	//std::cout << "number of cycles=" << XPLMGetCycleNumber() << '\t';
-  std::cout << "bytes received= " << receivedArray << '\n';
+  //std::cout << "bytes received= " << receivedArray << '\n';
 	//transform in local coordinates that can be written as datarefs
 	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,
 									 &aircraft_localX,&aircraft_localY,&aircraft_localZ);
 
-	// transform in latitude longitude elevation coordinates ship position
-	XPLMLocalToWorld(ship_localX,ship_localY,ship_localZ,
-									 &ship_latitude,&ship_longitude,&ship_elevation);
 
 	// set the useful data
 	XPLMSetDatad(aircraft_xLocalDataRef,aircraft_localX);
@@ -351,14 +383,38 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDataf(ship_phiDataRef,ship_phi);
 	XPLMSetDataf(ship_theDataRef,ship_theta);
 	XPLMSetDataf(ship_psiDataRef,ship_psi);
-	/*
+/*
 	std::cout << "ship phi= "  << ship_phi << '\t';
 	std::cout << "ship theta= " << ship_theta << '\t';
 	std::cout << "ship psi= " << ship_psi << '\n';
-	std::cout << "ship latitude= "  << ship_latitude << '\t';
-	std::cout << "ship longitude= " << ship_longitude << '\t';
-	std::cout << "ship elevation= " << ship_elevation << '\n';
-	*/
+	std::cout << "ship x= "  << ship_localX << '\t';
+	std::cout << "ship y= " << ship_localY << '\t';
+	std::cout << "ship elevation= " << ship_localZ << '\n';
+*/
+
+	// create the structure containing the data for the ship
+ 	XPLMDrawInfo_t F590LocationAndAttitude = {sizeof(XPLMDrawInfo_t),
+																						ship_localX,
+																						ship_localY,
+																						ship_localZ,
+																						ship_theta,
+																						ship_psi,
+																						ship_phi};
+
+/*
+	XPLMInstanceSetPosition(F590InstanceRef,
+													&F590LocationAndAttitude,
+													);
+*/
+/*
+	// set ship position and attitude
+	XPLMDrawObjects(F590ObjectRef,
+									1,
+									&F590LocationAndAttitude,
+									0,
+									0);
+*/
+
 	return dt;
 
 }
@@ -431,6 +487,7 @@ PLUGIN_API int XPluginStart(
 	rotors_shaft_anglesDataRef = XPLMFindDataRef("sim/flightmodel2/engines/prop_rotation_angle_deg");
 
 	// ship datarefs
+
 	ship_xDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_x");
 	ship_yDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_y");
 	ship_zDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_z");
@@ -446,9 +503,32 @@ PLUGIN_API int XPluginStart(
 	XPLMSetDatai(AvionicsOn,1);
 
 	// initialize ship angles
+	/*
 	XPLMSetDataf(ship_phiDataRef,0.0);
 	XPLMSetDataf(ship_theDataRef,0.0);
 	XPLMSetDataf(ship_psiDataRef,0.0);
+	*/
+	// initialize ship latitude, longitude, elevation
+	// TODO: interactively movable
+	ship_latitude  = 40.048215;
+	ship_longitude = 11.919200;
+	ship_elevation = 0.0;
+	XPLMWorldToLocal(ship_latitude,ship_longitude,ship_elevation,
+									 &ship_localY,&ship_localX,&ship_localZ);
+
+
+	// load obj file
+	F590ObjectRef = XPLMLoadObject(F590FolderLocation);
+	if(F590ObjectRef){
+		std::cout << "model found in "<< F590FolderLocation << '\n';
+	}
+	else{
+		std::cout << "model not found in "<< F590FolderLocation << '\n';
+	}
+	std::cout << "MATTEO MATTEO initialization check" << '\n';
+	// register an instance of an xplane object
+	F590InstanceRef = XPLMCreateInstance(F590ObjectRef,*F590InstancedDataRefs);
+
 
 	// create the customized flightloop
 	XPLMCreateFlightLoop_t	MBDynFrameSimFlightLoop_structure_ptr = {sizeof(XPLMCreateFlightLoop_t),
@@ -478,6 +558,23 @@ PLUGIN_API int XPluginStart(
 		(or the time it was registered if it has never been called.
 	*/
 
+	// create the structure containing the data for the ship
+	XPLMDrawInfo_t F590LocationAndAttitude = {sizeof(XPLMDrawInfo_t),
+																						ship_localX,
+																						ship_localY,
+																						ship_localZ,
+																						0.0,
+																						0.0,
+																						0.0};
+
+	// draw ship object where needed
+	XPLMDrawObjects(
+									F590ObjectRef,
+									1,
+									&F590LocationAndAttitude,
+									0,
+									0);
+
 	// register flightloop callback
 	XPLMRegisterFlightLoopCallback(ReceiveDataFromSocket,dt,NULL);
 
@@ -496,7 +593,7 @@ PLUGIN_API void	XPluginStop(void)
 		// destroy customized flight loop callback
 		XPLMDestroyFlightLoop(MBDynFrameSimFlightLoop);
 
-		std::cout << "ma fin qui arriva?"<< '\n';
+		// when xplane is closed in the proper manner
 	}
 
 	/* Unregister the callback */
@@ -505,6 +602,16 @@ PLUGIN_API void	XPluginStop(void)
 	std::cout << "Closing the socket..."<< '\n';
 	close(socketInfo);
 	std::cout << "... socket closed!"<< '\n';
+
+	// unload ship
+	if(F590ObjectRef){
+		std::cout << "Unloading F590 model..."<< '\n';
+		XPLMUnloadObject(F590ObjectRef);
+		std::cout << "... model unloaded!"<< '\n';
+	}
+
+	// destroy ship instance
+	XPLMDestroyInstance(F590InstanceRef);
 
 }
 
