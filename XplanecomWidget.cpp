@@ -122,20 +122,13 @@ XPLMDrawInfo_t F590LocationAndAttitude;
 XPLMInstanceRef F590InstanceRef;
 float F590instancedData[6];
 
-const char* F590InstancedDataRefs[6][35]={
+const char* F590InstancedDataRefs[6][50]={
 			"sim/multiplayer/position/plane1_x",
 			"sim/multiplayer/position/plane1_y",
 			"sim/multiplayer/position/plane1_z",
 			"sim/multiplayer/position/plane1_phi",
 			"sim/multiplayer/position/plane1_the",
 			"sim/multiplayer/position/plane1_psi"};
-
-/*
-void 	F590LoadObjectAsync(
-													const char* inPath,
-													XPLMObjectLoaded_f inCallback,
-													void* inRefcon);
-*/
 
 // create a customized flightloop callback
 XPLMFlightLoopID MBDynFrameSimFlightLoop;
@@ -325,22 +318,15 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	// main and tail rotor RPM
 	rotorsShaftAngles[0] = positionAndAttitude_.MR_SHAFT_ANGLE;
 	rotorsShaftAngles[1] = positionAndAttitude_.MR_SHAFT_ANGLE;
-/*
-	ship_localX = positionAndAttitude_.SHIP_X;
-	ship_localY = positionAndAttitude_.SHIP_Y;
-	ship_localZ = positionAndAttitude_.SHIP_Z;
-*/
+
 	ship_latitude  = positionAndAttitude_.SHIP_LAT;
 	ship_longitude = positionAndAttitude_.SHIP_LONG;
 	ship_elevation = positionAndAttitude_.SHIP_ELEV;
 
 	ship_phi 	 = positionAndAttitude_.SHIP_PHI*rad2deg;
-	ship_theta = positionAndAttitude_.SHIP_THE*rad2deg;
+	ship_theta = -positionAndAttitude_.SHIP_THE*rad2deg;
 	ship_psi 	 = positionAndAttitude_.SHIP_PSI*rad2deg;
 
-  // print what is received
-	//std::cout << "number of cycles=" << XPLMGetCycleNumber() << '\t';
-  //std::cout << "bytes received= " << receivedArray << '\n';
 	//transform in local coordinates that can be written as datarefs
 	XPLMWorldToLocal(aircraft_latitude,aircraft_longitude,aircraft_elevation,
 									 &aircraft_localX,&aircraft_localY,&aircraft_localZ);
@@ -379,7 +365,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMSetDataf(joystick_trim_collectiveDataRef,joystickTrimNormalizedPositions[3]);
 
 
-	XPLMSetDatavf(rotors_shaft_anglesDataRef,rotorsShaftAngles,0,2);
+	XPLMSetDatavf(rotors_shaft_anglesDataRef,rotorsShaftAngles,0,3);
 /*
 	XPLMSetDatad(ship_xDataRef,ship_localX);
 	XPLMSetDatad(ship_yDataRef,ship_localY);
@@ -394,31 +380,31 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 								 	 &ship_localX,&ship_localY,&ship_localZ);
 
 	// create the structure containing the data for the ship
- 	XPLMDrawInfo_t F590LocationAndAttitude = {sizeof(XPLMDrawInfo_t),
-																						ship_localX,
-																						ship_localY,
-																						ship_localZ,
-																						ship_phi,
-																						ship_theta,
-																						ship_psi};
+ 	XPLMDrawInfo_t F590LocationAndAttitude = {sizeof(XPLMDrawInfo_t), // Set this to the size of this structure!
+																						ship_localX,						// X location of the object in local coordinates.
+																						ship_localY,						// Y location of the object in local coordinates.
+																						ship_localZ,						// Z location of the object in local coordinates.
+																						ship_theta,							// Pitch in degres to rotate the object, positive is up.
+																						ship_psi,						    // Heading in local coordinates to rotate the object, clockwise.
+																						ship_phi};							// Roll to rotate the object.
 
 	F590instancedData[0] = ship_localX;
 	F590instancedData[1] = ship_localY;
 	F590instancedData[2] = ship_localZ;
-	F590instancedData[3] = ship_phi;
-	F590instancedData[4] = ship_theta;
-	F590instancedData[5] = ship_psi;
+	F590instancedData[3] = ship_theta;
+	F590instancedData[4] = ship_psi;
+	F590instancedData[5] = ship_phi;
 	XPLMInstanceSetPosition(F590InstanceRef,
 													&F590LocationAndAttitude,
 													F590instancedData);
-
+/*
   std::cout << " latitude " << ship_latitude << '\n';
 	std::cout << " longitude " << ship_longitude << '\n';
 	std::cout << " elevation " << ship_elevation << '\n';
 	std::cout << " phi " << F590instancedData[3] << '\n';
 	std::cout << " theta " << F590instancedData[4] << '\n';
 	std::cout << " psi " << F590instancedData[5] << '\n';
-
+*/
 
 
 	return dt;
@@ -561,15 +547,6 @@ PLUGIN_API int XPluginStart(
 		otherwise they are from the time the callback was last called
 		(or the time it was registered if it has never been called.
 	*/
-
-	// create the structure containing the data for the ship
-	XPLMDrawInfo_t F590LocationAndAttitude = {sizeof(XPLMDrawInfo_t),
-																						ship_localX,
-																						ship_localY,
-																						ship_localZ,
-																						0.0,
-																						0.0,
-																						0.0};
 
 	// register flightloop callback
 	XPLMRegisterFlightLoopCallback(ReceiveDataFromSocket,dt,NULL);
