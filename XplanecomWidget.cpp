@@ -6,6 +6,7 @@
 #include "XPLMInstance.h"
 #include "XPLMProcessing.h"
 #include "XPLMMenus.h"
+#include "XPLMCamera.h"
 #include "XPWidgets.h"
 #include "XPStandardWidgets.h"
 
@@ -68,8 +69,6 @@ XPLMDataRef OverrideFDMDataRef = NULL;
 XPLMDataRef OverrideJoystickDataRef = NULL;
 XPLMDataRef AvionicsOn = NULL;
 
-//XPLMDataRef FlightModelReactivateDataRef = NULL;
-
 XPLMDataRef aircraft_xLocalDataRef = NULL;
 XPLMDataRef aircraft_yLocalDataRef = NULL;
 XPLMDataRef aircraft_zLocalDataRef = NULL;
@@ -104,20 +103,20 @@ XPLMDataRef joystick_trim_pedalsDataRef = NULL;
 XPLMDataRef joystick_trim_collectiveDataRef = NULL;
 
 
-// dataref creation for ship position
-XPLMDataRef ship_xDataRef = NULL;
-XPLMDataRef ship_yDataRef = NULL;
-XPLMDataRef ship_zDataRef = NULL;
-XPLMDataRef ship_phiDataRef = NULL;
-XPLMDataRef ship_theDataRef = NULL;
-XPLMDataRef ship_psiDataRef = NULL;
+// dataref creation for pilot's head position
+XPLMDataRef head_xDataRef = NULL;
+XPLMDataRef head_yDataRef = NULL;
+XPLMDataRef head_zDataRef = NULL;
+XPLMDataRef head_phiDataRef = NULL;
+XPLMDataRef head_theDataRef = NULL;
+XPLMDataRef head_psiDataRef = NULL;
+
+
 
 // create ship object loader
 const char* F590FolderLocation = "Resources/plugins/XplanecomWidget/F590.obj";
 XPLMObjectRef F590ObjectRef;
-XPLMObjectLoaded_f F590ObjectLoaded(
-																		XPLMObjectRef inObject,
-																		void* inRefcon);
+
 XPLMDrawInfo_t F590LocationAndAttitude;
 XPLMInstanceRef F590InstanceRef;
 float F590instancedData[6];
@@ -129,6 +128,34 @@ const char* F590InstancedDataRefs[6][50]={
 			"sim/multiplayer/position/plane1_phi",
 			"sim/multiplayer/position/plane1_the",
 			"sim/multiplayer/position/plane1_psi"};
+
+
+// create following hud
+const char* HUDFolderLocation = "Resources/plugins/XplanecomWidget/AW101_HUD_Pilot_Moving.obj";
+XPLMObjectRef HUDObjectRef;
+
+XPLMDrawInfo_t HUDLocationAndAttitude;
+XPLMCameraPosition_t actualCameraPosition;
+XPLMInstanceRef HUDInstanceRef;
+float HUDInstancedData[6];
+float HUDPosition[3];
+float R123[3][3];
+
+const char* HUDInstancedDataRefs[6][50]={
+				"sim/multiplayer/position/plane2_x",
+				"sim/multiplayer/position/plane2_y",
+				"sim/multiplayer/position/plane2_z",
+				"sim/multiplayer/position/plane2_phi",
+				"sim/multiplayer/position/plane2_the",
+				"sim/multiplayer/position/plane2_psi"};
+	/*
+								"sim/graphics/view/view_x"			//float	n	OGLcoords	The location of the camera, X coordinate (OpenGL)
+								"sim/graphics/view/view_y"			//float	n	OGLcoords	The location of the camera, Y coordinate (OpenGL)
+								"sim/graphics/view/view_z"			//float	n	OGLcoords	The location of the camera, Z coordinate (OpenGL)
+								"sim/graphics/view/view_pitch"	//float	n	degrees	The camera's pitch
+								"sim/graphics/view/view_roll"		//float	n	degrees	The camera's roll
+								"sim/graphics/view/view_heading"};	//float	n	degrees	the camera's heading, CW frmo true north};
+*/
 
 // create a customized flightloop callback
 XPLMFlightLoopID MBDynFrameSimFlightLoop;
@@ -229,20 +256,22 @@ float joystickNormalizedPositions[4];
 float joystickTrimNormalizedPositions[4];
 float rotorsShaftAngles[2];
 
+
+//
+float head_localX;
+float head_localY;
+float head_localZ;
+float head_phi;
+float head_theta;
+float head_psi;
+
+
 // array to override internal fdm (20 values can be overridden, interested only in the first)
 int deactivateFlag[1];
 // array to reactivate internal fdm
 int reactivateFlag[1];
 // button state for the widget
 static XPWidgetID FDMbuttonState[1] = {NULL};
-
-
-// load ship asynchronously
-//void F590LoadObjectAsync(const char* inPath, XPLMObjectLoaded_f inCallback, void* inRefcon){
-
-
-
-
 
 //socket functions
 int CreateSocket(const char* host, int socketport){
@@ -366,15 +395,6 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 
 
 	XPLMSetDatavf(rotors_shaft_anglesDataRef,rotorsShaftAngles,0,3);
-/*
-	XPLMSetDatad(ship_xDataRef,ship_localX);
-	XPLMSetDatad(ship_yDataRef,ship_localY);
-	XPLMSetDatad(ship_zDataRef,ship_localZ);
-
-	XPLMSetDataf(ship_phiDataRef,ship_phi);
-	XPLMSetDataf(ship_theDataRef,ship_theta);
-	XPLMSetDataf(ship_psiDataRef,ship_psi);
-*/
 
 	XPLMWorldToLocal(ship_latitude,ship_longitude,ship_elevation,
 								 	 &ship_localX,&ship_localY,&ship_localZ);
@@ -397,14 +417,64 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	XPLMInstanceSetPosition(F590InstanceRef,
 													&F590LocationAndAttitude,
 													F590instancedData);
-/*
-  std::cout << " latitude " << ship_latitude << '\n';
-	std::cout << " longitude " << ship_longitude << '\n';
-	std::cout << " elevation " << ship_elevation << '\n';
-	std::cout << " phi " << F590instancedData[3] << '\n';
-	std::cout << " theta " << F590instancedData[4] << '\n';
-	std::cout << " psi " << F590instancedData[5] << '\n';
-*/
+
+	// get the position of the head and update the position of the HUD
+	head_localX = XPLMGetDataf(head_xDataRef);
+	head_localY = XPLMGetDataf(head_yDataRef);
+	head_localZ = XPLMGetDataf(head_zDataRef);
+	head_phi 	  = XPLMGetDataf(head_phiDataRef);
+	head_theta  = XPLMGetDataf(head_theDataRef);
+	head_psi 	  = XPLMGetDataf(head_psiDataRef);
+
+	// when life gives you lemons...
+	float hphi = head_phi*deg2rad;
+	float hthe = head_theta*deg2rad;
+	float hpsi = head_psi*deg2rad;
+	float HUDPositionLocal[3] = {0.0,0.0,-0.2};
+
+	// where to put the hud in head coordinates
+	R123[0][0] =  cos(hthe)*cos(hpsi); R123[0][1] = -cos(hphi)*sin(hpsi)+sin(hphi)*sin(hthe)*cos(hpsi); R123[0][2] =  sin(hphi)*sin(hpsi)+cos(hphi)*sin(hthe)*cos(hpsi);
+	R123[1][0] =  cos(hthe*sin(hpsi)); R123[1][1] =  cos(hphi)*cos(hpsi)+sin(hphi)*sin(hthe)*sin(hpsi); R123[1][2] = -sin(hphi)*cos(hpsi)+cos(hphi)*sin(hthe)*sin(hpsi);
+	R123[2][0] = -sin(hthe)					 ; R123[2][1] =  sin(hphi)*cos(hthe) 															; R123[2][2] =  cos(hphi)*cos(hthe)															 ;
+
+	// hud arm is updated with respect to the position of the head of the pilot
+	for (int i=0;i<3;i++){
+		for (int j=0;j<3;j++){
+				HUDPosition[i]+=(R123[i][j]*HUDPositionLocal[j]);
+		}
+	}
+	// pilot hud updated with respect to aircraft position
+	/*
+	std::cout << R123[0][0] << '\t'<< R123[0][1] << '\t'<< R123[0][2] << '\n';
+	std::cout << R123[1][0] << '\t'<< R123[1][1] << '\t'<< R123[1][2] << '\n';
+	std::cout << R123[2][0] << '\t'<< R123[2][1] << '\t'<< R123[2][2] << '\n';
+	*/
+  // read camera position
+	// XPLMReadCameraPosition(&actualCameraPosition);
+	/*
+	HUDPosition[0] = HUDPosition[0]+head_localX+aircraft_localX;
+	HUDPosition[1] = HUDPosition[1]+head_localY+aircraft_localY;
+	HUDPosition[2] = HUDPosition[2]+head_localZ+aircraft_localZ;
+	*/
+	// create hud position structure
+	XPLMDrawInfo_t HUDLocationAndAttitude = {sizeof(XPLMDrawInfo_t),
+																								HUDPosition[0],
+																								HUDPosition[1],
+																								HUDPosition[2],
+																								head_theta,
+																								head_psi,
+																								head_phi};
+
+	// update Hud position in front of pilot's head
+	HUDInstancedData[0] = HUDPosition[0];
+	HUDInstancedData[1] = HUDPosition[1];
+	HUDInstancedData[2] = HUDPosition[2];
+	HUDInstancedData[3] = head_theta;
+	HUDInstancedData[4] = head_psi;
+	HUDInstancedData[5] = head_phi;
+	XPLMInstanceSetPosition(HUDInstanceRef,
+													&HUDLocationAndAttitude,
+													HUDInstancedData);
 
 
 	return dt;
@@ -477,14 +547,14 @@ PLUGIN_API int XPluginStart(
 
 	rotors_shaft_anglesDataRef = XPLMFindDataRef("sim/flightmodel2/engines/prop_rotation_angle_deg");
 
-	// ship datarefs
+	// head datarefs
+	head_xDataRef = XPLMFindDataRef("sim/graphics/view/pilots_head_x"); //meters	Position of pilot's head relative to CG, X
+	head_yDataRef = XPLMFindDataRef("sim/graphics/view/pilots_head_y"); //meters	Position of pilot's head relative to CG, Y
+	head_zDataRef = XPLMFindDataRef("sim/graphics/view/pilots_head_z"); //meters	Position of pilot's head relative to CG, Z
+	head_phiDataRef = XPLMFindDataRef("sim/graphics/view/pilots_head_phi");
+	head_theDataRef = XPLMFindDataRef("sim/graphics/view/pilots_head_the");
+	head_psiDataRef = XPLMFindDataRef("sim/graphics/view/pilots_head_psi");
 
-	ship_xDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_x");
-	ship_yDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_y");
-	ship_zDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_z");
-	ship_phiDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_phi");
-	ship_theDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_the");
-	ship_psiDataRef = XPLMFindDataRef("sim/multiplayer/position/plane1_psi");
 
 	XPLMSetDatavf(blade_pitch_mainDataRef,initialAnglesValue,0,5);
 	XPLMSetDatavf(blade_flapDataRef,initialAnglesValue,0,5);
@@ -515,10 +585,24 @@ PLUGIN_API int XPluginStart(
 	else{
 		std::cout << "model not found in "<< F590FolderLocation << '\n';
 	}
-	std::cout << "MATTEO MATTEO initialization check" << '\n';
+	std::cout << "Initialization check: MATTEO DANIELE was here and summoned a frigate." << '\n';
+
 	// register an instance of an xplane object
 	F590InstanceRef = XPLMCreateInstance(F590ObjectRef,*F590InstancedDataRefs);
 
+
+	// load HUD
+	HUDObjectRef = XPLMLoadObject(HUDFolderLocation);
+	if(HUDObjectRef){
+		std::cout << "hud found in "<< HUDFolderLocation << '\n';
+	}
+	else{
+		std::cout << "hud not found in "<< HUDFolderLocation << '\n';
+	}
+	std::cout << "Initialization check: MATTEO DANIELE was here and summoned a HUD." << '\n';
+
+	// register an instance of an xplane object
+	HUDInstanceRef 	= XPLMCreateInstance(HUDObjectRef,*HUDInstancedDataRefs);
 
 	// create the customized flightloop
 	XPLMCreateFlightLoop_t	MBDynFrameSimFlightLoop_structure_ptr = {sizeof(XPLMCreateFlightLoop_t),
@@ -583,11 +667,18 @@ PLUGIN_API void	XPluginStop(void)
 	if(F590ObjectRef){
 		std::cout << "Unloading F590 model..."<< '\n';
 		XPLMUnloadObject(F590ObjectRef);
+		// destroy ship instance
+		XPLMDestroyInstance(F590InstanceRef);
 		std::cout << "... model unloaded!"<< '\n';
 	}
-
-	// destroy ship instance
-	XPLMDestroyInstance(F590InstanceRef);
+	// unload hud
+	if(HUDObjectRef){
+		std::cout << "Unloading hud model..."<< '\n';
+		XPLMUnloadObject(HUDObjectRef);
+		// destroy hud XPLMCreateInstance
+		XPLMDestroyInstance(HUDInstanceRef);
+		std::cout << "... model unloaded!"<< '\n';
+	}
 }
 
 PLUGIN_API void XPluginDisable(void) { }
