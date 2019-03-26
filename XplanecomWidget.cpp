@@ -41,6 +41,9 @@ float pi = 3.14159265359;
 float deg2rad = pi/180;
 float rad2deg = 1/deg2rad;
 float mt2ft = 0.3048;
+float ms2kt = 1.94384;
+float kt2ms = 1/ms2kt;
+float timeStep = 0.0026;
 
 // socket properties definition
 const char* Host = "127.0.0.1";
@@ -67,7 +70,6 @@ int gMenuItem;
 // initialize the datarefs
 XPLMDataRef OverrideFDMDataRef = NULL;
 XPLMDataRef OverrideJoystickDataRef = NULL;
-XPLMDataRef AvionicsOn = NULL;
 
 XPLMDataRef aircraft_xLocalDataRef = NULL;
 XPLMDataRef aircraft_yLocalDataRef = NULL;
@@ -76,6 +78,7 @@ XPLMDataRef aircraft_indicatedAltitudeDataRef = NULL;
 XPLMDataRef aircraft_verticalSpeedDataRef = NULL;
 XPLMDataRef aircraft_lateralAccelerationDataRef = NULL;
 XPLMDataRef aircraft_airspeedDataRef = NULL;
+XPLMDataRef aircraft_airspeed2DataRef = NULL;
 
 XPLMDataRef phiDataRef = NULL;
 XPLMDataRef thetaDataRef = NULL;
@@ -135,10 +138,11 @@ const char* HUDFolderLocation = "Resources/plugins/XplanecomWidget/AW101_HUD_Pil
 XPLMObjectRef HUDObjectRef;
 
 XPLMDrawInfo_t HUDLocationAndAttitude;
-XPLMCameraPosition_t actualCameraPosition;
+//XPLMCameraPosition_t actualCameraPosition;
 XPLMInstanceRef HUDInstanceRef;
 float HUDInstancedData[6];
 float HUDPosition[3];
+float HUDAircraftPosition[3];
 float R123[3][3];
 
 const char* HUDInstancedDataRefs[6][50]={
@@ -176,13 +180,13 @@ static float ReceiveDataFromSocket(
 
 // structure definition
 struct{
-// helo
 double latitudeReceived;
 double longitudeReceived;
 double elevationReceived;
 float airspeedReceived;
+//float vyReceived;
 float vertspeedReceived;
-float lateralaccReceived;
+float lateralspeedReceived;
 float phiReceived;
 float thetaReceived;
 float psiReceived;
@@ -201,7 +205,6 @@ float BLADE_4_lag;
 float BLADE_5_pitch;
 float BLADE_5_flap;
 float BLADE_5_lag;
-// joystick
 float JOYSTICK_CYCLIC_LATERAL;
 float JOYSTICK_CYCLIC_LONGITUDINAL;
 float JOYSTICK_PEDALS;
@@ -211,12 +214,9 @@ float JOYSTICK_TRIM_CYCLIC_LONGITUDINAL;
 float JOYSTICK_TRIM_PEDALS;
 float JOYSTICK_TRIM_COLLECTIVE;
 float MR_SHAFT_ANGLE;
-// ship
-
 double SHIP_LAT;
 double SHIP_LONG;
 double SHIP_ELEV;
-
 float SHIP_PHI;
 float SHIP_THE;
 float SHIP_PSI;
@@ -233,6 +233,8 @@ double aircraft_localY;
 double aircraft_localZ;
 float aircraft_airspeed;
 float aircraft_vertspeed;
+float aircraft_lateralspeed;
+float aircraft_lateralspeed_old;
 float aircraft_lateralacc;
 float aircraft_phi;
 float aircraft_theta;
@@ -265,6 +267,11 @@ float head_phi;
 float head_theta;
 float head_psi;
 
+// mean vertical speed counter
+const int vertspeedMemorySize = 10;
+float vertspeedMemoryArray[vertspeedMemorySize];
+float vertspeedMean = 0;
+int vertspeedCounter = 0;
 
 // array to override internal fdm (20 values can be overridden, interested only in the first)
 int deactivateFlag[1];
@@ -309,7 +316,7 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
   aircraft_elevation 	= positionAndAttitude_.elevationReceived;
 	aircraft_airspeed 	= positionAndAttitude_.airspeedReceived;
 	aircraft_vertspeed  = positionAndAttitude_.vertspeedReceived;
-	aircraft_lateralacc = positionAndAttitude_.lateralaccReceived;
+	aircraft_lateralspeed = positionAndAttitude_.lateralspeedReceived;
   aircraft_phi 	 			= positionAndAttitude_.phiReceived;
   aircraft_theta 			= positionAndAttitude_.thetaReceived;
   aircraft_psi 	 			= positionAndAttitude_.psiReceived;
@@ -362,14 +369,41 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 
 
 	// set the useful data
+	// derive acc
+	//float tanphi = tan(aircraft_phi*deg2rad);
+	aircraft_lateralacc = ((aircraft_lateralspeed-aircraft_lateralspeed_old)/timeStep)+9.81*tan(aircraft_phi*deg2rad);
+	// update lateral acc
+	XPLMSetDataf(aircraft_lateralAccelerationDataRef,aircraft_lateralacc); // in m/s^2
+	aircraft_lateralspeed_old = aircraft_lateralspeed;
+
+	// update vertical speed counter
+	// store vertical speed value
+	vertspeedMemoryArray[vertspeedCounter] = aircraft_vertspeed;
+	// when memory is full compute the sum of the accumulated data
+	if (vertspeedCounter == vertspeedMemorySize){
+		vertspeedMean = 0;
+		for(int k=0;k<vertspeedMemorySize;k++){
+				vertspeedMean = vertspeedMean+vertspeedMemoryArray[k];
+		}
+		// compute mean vertical speed
+		vertspeedMean = vertspeedMean/vertspeedMemorySize*60.0; // in ft/min
+		// reset counter
+		vertspeedCounter = 0;
+		// reinitialize memory array
+		vertspeedMemoryArray[vertspeedCounter] = aircraft_vertspeed;
+	}
+	// update counter
+	vertspeedCounter++;
+
+
 
 	XPLMSetDatad(aircraft_xLocalDataRef,aircraft_localX);
 	XPLMSetDatad(aircraft_yLocalDataRef,aircraft_localY);
 	XPLMSetDatad(aircraft_zLocalDataRef,aircraft_localZ);
 	XPLMSetDataf(aircraft_indicatedAltitudeDataRef,aircraft_elevation/mt2ft); // in ft
 	XPLMSetDataf(aircraft_airspeedDataRef,aircraft_airspeed);
-	XPLMSetDataf(aircraft_verticalSpeedDataRef,aircraft_vertspeed*60.0); // in ft/min
-	XPLMSetDataf(aircraft_lateralAccelerationDataRef,aircraft_lateralacc); // in m/s^2
+	XPLMSetDataf(aircraft_airspeed2DataRef,aircraft_lateralspeed);
+	XPLMSetDataf(aircraft_verticalSpeedDataRef,vertspeedMean); // in ft/min
 	XPLMSetDataf(phiDataRef,aircraft_phi);
 	XPLMSetDataf(thetaDataRef,aircraft_theta);
 	XPLMSetDataf(psiDataRef,aircraft_psi);
@@ -430,7 +464,14 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	float hphi = head_phi*deg2rad;
 	float hthe = head_theta*deg2rad;
 	float hpsi = head_psi*deg2rad;
-	float HUDPositionLocal[3] = {0.0,0.0,-0.2};
+	float HUDPositionLocal[3] = {-0.2,0.0,0.0};
+	// aircraft position with rotations
+	float ahphi = aircraft_phi*deg2rad;
+	float ahthe = aircraft_theta*deg2rad;
+	float ahpsi = aircraft_psi*deg2rad;
+
+	// must be reinitialized at each step, otherwise it accumulates
+	float HUDPosition[3] = {0.0,0.0,0.0};
 
 	// where to put the hud in head coordinates
 	R123[0][0] =  cos(hthe)*cos(hpsi); R123[0][1] = -cos(hphi)*sin(hpsi)+sin(hphi)*sin(hthe)*cos(hpsi); R123[0][2] =  sin(hphi)*sin(hpsi)+cos(hphi)*sin(hthe)*cos(hpsi);
@@ -438,11 +479,13 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	R123[2][0] = -sin(hthe)					 ; R123[2][1] =  sin(hphi)*cos(hthe) 															; R123[2][2] =  cos(hphi)*cos(hthe)															 ;
 
 	// hud arm is updated with respect to the position of the head of the pilot
-	for (int i=0;i<3;i++){
-		for (int j=0;j<3;j++){
-				HUDPosition[i]+=(R123[i][j]*HUDPositionLocal[j]);
+	for (int j=0;j<3;j++){
+		for (int i=0;i<3;i++){
+				HUDPosition[j]+=(R123[j][i]*HUDPositionLocal[i]);
 		}
 	}
+
+
 	// pilot hud updated with respect to aircraft position
 	/*
 	std::cout << R123[0][0] << '\t'<< R123[0][1] << '\t'<< R123[0][2] << '\n';
@@ -451,11 +494,16 @@ float ReceiveDataFromSocket(       float                inElapsedSinceLastCall,
 	*/
   // read camera position
 	// XPLMReadCameraPosition(&actualCameraPosition);
-	/*
 	HUDPosition[0] = HUDPosition[0]+head_localX+aircraft_localX;
 	HUDPosition[1] = HUDPosition[1]+head_localY+aircraft_localY;
 	HUDPosition[2] = HUDPosition[2]+head_localZ+aircraft_localZ;
-	*/
+
+	std::cout << HUDPosition[0] << '\t'<< head_localX << '\t'<< aircraft_localX<<'\n';
+	std::cout << HUDPosition[1] << '\t'<< head_localY << '\t'<< aircraft_localY<<'\n';
+	std::cout << HUDPosition[2] << '\t'<< head_localZ << '\t'<< aircraft_localZ<<'\n';
+
+
+
 	// create hud position structure
 	XPLMDrawInfo_t HUDLocationAndAttitude = {sizeof(XPLMDrawInfo_t),
 																								HUDPosition[0],
@@ -507,7 +555,7 @@ PLUGIN_API int XPluginStart(
 	deactivateFlag[0] = 1;
 	OverrideFDMDataRef = XPLMFindDataRef("sim/operation/override/override_planepath");
 	OverrideJoystickDataRef = XPLMFindDataRef("sim/operation/override/override_joystick");
-	AvionicsOn =  XPLMFindDataRef("sim/cockpit2/switches/avionics_power_on");
+
 	// find the useful data
 	aircraft_xLocalDataRef 	= XPLMFindDataRef("sim/flightmodel/position/local_x");
 	aircraft_yLocalDataRef  = XPLMFindDataRef("sim/flightmodel/position/local_y");
@@ -515,6 +563,7 @@ PLUGIN_API int XPluginStart(
 
 	aircraft_indicatedAltitudeDataRef = XPLMFindDataRef("sim/flightmodel/misc/h_ind");
 	aircraft_airspeedDataRef= XPLMFindDataRef("sim/flightmodel/position/indicated_airspeed");
+	aircraft_airspeed2DataRef= XPLMFindDataRef("sim/flightmodel/position/indicated_airspeed2");
 	aircraft_verticalSpeedDataRef = XPLMFindDataRef("sim/flightmodel/position/vh_ind_fpm");
 	aircraft_lateralAccelerationDataRef = XPLMFindDataRef("sim/flightmodel/position/local_ay");
 	// euler angles
@@ -561,7 +610,7 @@ PLUGIN_API int XPluginStart(
 	XPLMSetDatavf(blade_lagDataRef,initialAnglesValue,0,5);
 	XPLMSetDatavf(blade_pitch_tailDataRef,initialAnglesValue,0,4);
 	XPLMSetDatavf(rotors_shaft_anglesDataRef,initialAnglesValue,0,2);
-	XPLMSetDatai(AvionicsOn,1);
+
 
 	// initialize ship angles
 	/*
@@ -574,6 +623,7 @@ PLUGIN_API int XPluginStart(
 	ship_latitude  = 40.048215;
 	ship_longitude = 11.919200;
 	ship_elevation = 0.0;
+
 	XPLMWorldToLocal(ship_latitude,ship_longitude,ship_elevation,
 									 &ship_localX,&ship_localY,&ship_localZ);
 
